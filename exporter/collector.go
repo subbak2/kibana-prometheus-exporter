@@ -40,6 +40,7 @@ type KibanaMetrics struct {
 	Status struct {
 		Overall struct {
 			Level string `json:"level"`
+			State string `json:"state"` // opensearch dashboards uses "state" instead of "level"
 		} `json:"overall"`
 
 		Core struct {
@@ -189,7 +190,11 @@ func (c *KibanaCollector) scrape() (*KibanaMetrics, error) {
 
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/status", c.url), nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not initialize a request to scrape metrics: %s", err)
+		// return nil, fmt.Errorf("could not initialize a request to scrape metrics: %s", err)
+		log.Warn().Msgf("could not initialize a request to scrape metrics: %s", err)
+		metrics := &KibanaMetrics{}
+		metrics.Status.Overall.Level = "critical"
+		return metrics, nil
 	}
 
 	if c.authHeader != "" {
@@ -204,7 +209,11 @@ func (c *KibanaCollector) scrape() (*KibanaMetrics, error) {
 		Msg("requesting api/status from kibana")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error while reading Kibana status: %s", err)
+		// return nil, fmt.Errorf("error while reading Kibana status: %s", err)
+		log.Warn().Msgf("error while reading Kibana status: %s", err)
+		metrics := &KibanaMetrics{}
+		metrics.Status.Overall.Level = "critical"
+		return metrics, nil
 	}
 
 	// CWE-703
@@ -218,18 +227,35 @@ func (c *KibanaCollector) scrape() (*KibanaMetrics, error) {
 		Msg("processing api/status response")
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("invalid response from Kibana status: %s", resp.Status)
+		// return nil, fmt.Errorf("invalid response from Kibana status: %s", resp.Status)
+		log.Warn().Msgf("invalid response from Kibana status: %s", resp.Status)
+		metrics := &KibanaMetrics{}
+		metrics.Status.Overall.Level = "critical"
+		return metrics, nil
 	}
 
 	respContent, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error while reading response from Kibana status: %s", err)
+		// return nil, fmt.Errorf("error while reading response from Kibana status: %s", err)
+		log.Warn().Msgf("error while reading response from Kibana status: %s", err)
+		metrics := &KibanaMetrics{}
+		metrics.Status.Overall.Level = "critical"
+		return metrics, nil
 	}
 
 	metrics := &KibanaMetrics{}
 	err = json.Unmarshal(respContent, &metrics)
 	if err != nil {
 		return nil, fmt.Errorf("error while unmarshalling Kibana status: %s\nProblematic content:\n%s", err, respContent)
+	}
+
+	switch metrics.Status.Overall.State {
+	case "green":
+		metrics.Status.Overall.Level = "available"
+	case "yellow":
+		metrics.Status.Overall.Level = "degraded"
+	case "red":
+		metrics.Status.Overall.Level = "critical"
 	}
 
 	return metrics, nil
