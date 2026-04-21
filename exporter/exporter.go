@@ -26,8 +26,9 @@ var (
 // Exporter implements the prometheus.Collector interface. This will
 // be used to register the metrics with Prometheus.
 type Exporter struct {
-	lock      sync.RWMutex
-	collector *KibanaCollector
+	lock            sync.RWMutex
+	collector       *KibanaCollector
+	isKibanaHealthy bool
 
 	// metrics
 	status                prometheus.Gauge
@@ -189,6 +190,14 @@ func (e *Exporter) parseMetrics(m *KibanaMetrics) error {
 		e.status.Set(val)
 	}
 
+	// If Kibana is not responding (critical status), only report status metric
+	if strings.ToLower(m.Status.Overall.Level) == "critical" {
+		e.isKibanaHealthy = false
+		return nil
+	}
+
+	e.isKibanaHealthy = true
+
 	if val, ok := statusLevels[strings.ToLower(m.Status.Core.Elasticsearch.Level)]; !ok {
 		// absence of this metric will default to critical
 		// initialising is also considered 0
@@ -226,6 +235,12 @@ func (e *Exporter) parseMetrics(m *KibanaMetrics) error {
 
 func (e *Exporter) send(ch chan<- prometheus.Metric) error {
 	ch <- e.status
+
+	// Only send detailed metrics if Kibana is healthy
+	if !e.isKibanaHealthy {
+		return nil
+	}
+
 	ch <- e.coreESStatus
 	ch <- e.coreSOStatus
 	ch <- e.concurrentConnections

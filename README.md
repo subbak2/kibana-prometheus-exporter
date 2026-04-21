@@ -1,3 +1,7 @@
+GOOS=darwin GOARCH=arm64 go build -o kibana-prometheus-exporter-m1
+
+./kibana-prometheus-exporter-m1 -kibana.uri http://localhost:5601 -kibana.username admin -kibana.password admin
+
 # Prometheus Exporter for Kibana (7.\*., 8.\*)
 
 1. [Usage](#usage)
